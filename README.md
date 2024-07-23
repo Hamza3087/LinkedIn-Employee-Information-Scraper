@@ -1,4 +1,3 @@
-# LinkedIn-Company-s-Employee-info-Scrapper
 
 # LinkedIn Employee Information Scraper
 This script automates the process of extracting employee information from LinkedIn based on a
