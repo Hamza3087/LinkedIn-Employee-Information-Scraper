@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkedIn Employee Search</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f2f5;
+        }
+        h1 {
+            color: #0077b5;
+            text-align: center;
+            text-decoration: underline;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        label {
+            margin: 10px 0 5px;
+            font-weight: bold;
+        }
+        input, button {
+            margin: 5px 0 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #0077b5;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #006097;
+        }
+        #message {
+            margin-top: 20px;
+            font-weight: bold;
+            text-align: center;
+        }
+        #downloadBtn {
+            display: none;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>LinkedIn Employee Search</h1>
+    <form id="searchForm">
+        <label for="linkedinEmail">LinkedIn Email</label>
+        <input type="email" id="linkedinEmail" placeholder="LinkedIn Email" required>
+
+        <label for="linkedinPassword">LinkedIn Password</label>
+        <input type="password" id="linkedinPassword" placeholder="LinkedIn Password" required>
+        
+        <label for="companyName">Company Name</label>
+        <input type="text" id="companyName" placeholder="Company Name" required>
+
+        <label for="locationInput">Location (optional)</label>
+        <input type="text" id="locationInput" placeholder="Location (optional)">
+
+        <label for="roleInput">Role (optional)</label>
+        <input type="text" id="roleInput" placeholder="Role (optional)">
+
+        <button type="submit">Search</button>
+    </form>
+    <div id="message"></div>
+    <button id="downloadBtn" style="display: none;">Download CSV</button>
+
+    <script>
+        const searchForm = document.getElementById('searchForm');
+        const messageDiv = document.getElementById('message');
+        const downloadBtn = document.getElementById('downloadBtn');
+        let searchId = '';
+
+        searchForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            messageDiv.textContent = 'Starting search...';
+            downloadBtn.style.display = 'none';
+            searchId = '';
+
+            try {
+                const response = await fetch('/search_employees', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        company_name: document.getElementById('companyName').value,
+                        location_input: document.getElementById('locationInput').value,
+                        role_input: document.getElementById('roleInput').value,
+                        linkedin_email: document.getElementById('linkedinEmail').value,
+                        linkedin_password: document.getElementById('linkedinPassword').value,
+                    }),
+                });
+
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.detail || 'An error occurred during the search');
+                }
+
+                searchId = result.search_id;
+                messageDiv.textContent = 'Search in progress...';
+                checkSearchStatus();
+            } catch (error) {
+                messageDiv.textContent = `Error: ${error.message}`;
+            }
+        });
+
+        async function checkSearchStatus() {
+            try {
+                const response = await fetch(`/search_status/${searchId}`);
+                const result = await response.json();
+
+                if (result.status === 'completed') {
+                    messageDiv.textContent = 'Search completed. You can now download the CSV.';
+                    downloadBtn.style.display = 'block';
+                } else if (result.status === 'failed') {
+                    messageDiv.textContent = 'Search failed. Please try again.';
+                } else {
+                    messageDiv.textContent = 'Search in progress...';
+                    setTimeout(checkSearchStatus, 5000); // Check again after 5 seconds
+                }
+            } catch (error) {
+                messageDiv.textContent = `Error checking search status: ${error.message}`;
+            }
+        }
+
+        downloadBtn.addEventListener('click', async () => {
+        if (!searchId) {
+            messageDiv.textContent = 'Error: No search ID available. Please try searching again.';
+            return;
+        }
+
+        try {
+            const companyName = document.getElementById('companyName').value;
+            const roleInput = document.getElementById('roleInput').value;
+            const locationInput = document.getElementById('locationInput').value;
+            
+            const sanitizeForFilename = (str) => str.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            
+            let filename = `employee_list_${sanitizeForFilename(companyName)}`;
+            if (roleInput) filename += `-${sanitizeForFilename(roleInput)}`;
+            if (locationInput) filename += `-${sanitizeForFilename(locationInput)}`;
+            filename += '.csv';
+            
+            const response = await fetch(`/download_csv/${searchId}`);
+            if (!response.ok) {
+                throw new Error('Failed to download the file');
+            }
+            
+            const contentDisposition = response.headers.get('Content-Disposition');
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+            
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            messageDiv.textContent = `Error: ${error.message}`;
+        }
+    });
+    </script>
+</body>
+</html>
